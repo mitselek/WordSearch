@@ -8,26 +8,30 @@ from reportlab.lib.units import cm
 from reportlab.pdfgen.canvas import Canvas
 
 # WORDCOUNT, WORDLENGTH, WORDS_PER_LINE, DIM = 40, 5, 6, (14, 14)
-WORDCOUNT, WORDLENGTH, WORDS_PER_LINE, DIM = 40, 5, 3, (7, 7)
+# WORDCOUNT, WORDLENGTH, WORDS_PER_LINE, DIM = 40, 4, 3, (6, 5)
+# WORDCOUNT, WORDLENGTH, WORDS_PER_LINE, DIM = 40, 4, 4, (8,6)
+MINWORDS, WORDCOUNT, WORDLENGTH, WORDS_PER_LINE, DIM = 20, 100, 6, 4, (12, 9)
 
-canvas = Canvas('booklet_' + str(WORDLENGTH) + '.pdf', pagesize=A4)
-canvas.setFont("Times-Roman", 18)
-canvas.drawString(2 * cm, 28 * cm, "Sõnamäng")
-
-
+BOOKLET_PAGES = 3
+PDF_FONT_SIZE = 16 * 16 / DIM[0]
+PDF_LEFT = (21 - (DIM[0] - 0.5) * PDF_FONT_SIZE / 16) / 2 * cm
+PDF_TOP = 29.7 * cm - PDF_LEFT
 
 RETRY_COUNT = 1000
 PLACEHOLDER = '_'
 DIRECTIONS = ((-1, -1), (0, -1), (1, -1), (-1, 0), (1, 0), (-1, 1), (0, 1), (1, 1))
 E_WORD_TOO_LONG = 'Nii pikk sõna ei mahu ära'
 
-WORDS = ''
-for word in sample(list(open('et/' + str(WORDLENGTH) + '.txt')), WORDCOUNT):
-    WORDS += word
-WORDS = WORDS.rstrip("\n").split('\n')
-WORDS.sort()
-print(WORDS)
-# WORDS.sort(key = len, reverse = True)
+def new_words():
+    words = ''
+    for word in sample(list(open('et/' + str(WORDLENGTH) + '.txt')), WORDCOUNT):
+        words += word
+    words = words.rstrip("\n").split('\n')
+    extra_words = []
+    for word in extra_words:
+        words.insert(0, word)
+
+    return words
 
 def new_matrix():
     width, height = DIM
@@ -152,66 +156,73 @@ def test_vector(word, vector, matrix):
 
 def to_canvas(matrix, words, canvas):
     for ix, row in enumerate(matrix):
-        canvas.setFont("Courier", 16)
-        canvas.drawString(2 * cm, (26 - ix) * cm, '  '.join(row).upper())
+        canvas.setFont("Courier", PDF_FONT_SIZE)
+        canvas.drawString(PDF_LEFT, PDF_TOP - (ix*PDF_FONT_SIZE/16) * cm, '  '.join(row).upper())
 
-    words.sort()
+    canvas.drawString(PDF_LEFT, PDF_TOP - ((ix + 1)*PDF_FONT_SIZE/16) * cm, ''.rjust(DIM[0]*3-2, '-'))
+
+    
+    shuffle(words)
+    # words.sort()
     while (len(words) % WORDS_PER_LINE) != 0:
         words.append('')
-
     line = 0
     while len(words):
-        canvas.setFont("Courier", 16)
-        canvas.drawString(2 * cm, (26 - ix - line - 2) * cm, '  '.join(words[:WORDS_PER_LINE]))
+        canvas.setFont("Courier", PDF_FONT_SIZE)
+        canvas.drawString(PDF_LEFT, PDF_TOP - ((ix + line + 2) * PDF_FONT_SIZE / 16) * cm, '  '.join(w.ljust(6) for w in words[:WORDS_PER_LINE]))
         words = words[WORDS_PER_LINE:]
         line += 1
 
+def create_page(canvas):
+    yes_words = []
+    while len(yes_words) < MINWORDS:
+        yes_words = []
+        no_words = []
+        all_letters = []
+        overlaps = 0
+        skipped = 0
+        matrix = new_matrix()
+        for word in new_words():
+            # print(word)
+            vector = fit_word(word, matrix)
+            if vector:
+                matches = test_vector(word, vector, matrix)
+                # print('FITTED', word, 'matches', matches, vector)
+                write_vector(word, vector, matrix, yes_words, all_letters)
+                overlaps += matches
+                continue
+            try_nr = 0
+            while True:  
+                vector = random_fit(word, matrix)
+                matches = test_vector(word, vector, matrix)
+                # print('placing', word, 'matches', matches)
+                if matches > -1:
+                    # print('placed', word, 'matches', matches, vector)
+                    write_vector(word, vector, matrix, yes_words, all_letters)
+                    overlaps += matches
+                    break
+                try_nr += 1
+                if try_nr > RETRY_COUNT:
+                    no_words.append(word)
+                    # print(word, ' - Could not place')
+                    skipped += 1
+                    break
+        print('made it to', len(yes_words))
 
-matrix = new_matrix()
-yes_words = []
-no_words = []
-all_letters = []
-overlaps = 0
-skipped = 0
-for word in WORDS:
-    # print(word)
-    vector = fit_word(word, matrix)
-    if vector:
-        matches = test_vector(word, vector, matrix)
-        # print('FITTED', word, 'matches', matches, vector)
-        write_vector(word, vector, matrix, yes_words, all_letters)
-        overlaps += matches
-        continue
-    try_nr = 0
-    while True:  
-        vector = random_fit(word, matrix)
-        matches = test_vector(word, vector, matrix)
-        # print('placing', word, 'matches', matches)
-        if matches > -1:
-            # print('placed', word, 'matches', matches, vector)
-            write_vector(word, vector, matrix, yes_words, all_letters)
-            overlaps += matches
-            break
-        try_nr += 1
-        if try_nr > RETRY_COUNT:
-            no_words.append(word)
-            # print(word, ' - Could not place')
-            skipped += 1
-            break
+    # print(all_letters, matrix)
+    fill_blanks(all_letters, matrix)
+    print('words', len(yes_words), 'skipped', skipped, 'overlaps', overlaps)
 
-# print(all_letters, matrix)
-fill_blanks(all_letters, matrix)
-print(__file__, 'skipped', skipped, 'overlaps', overlaps)
-# text = '<html><body>'
-# text += '\n' + print_matrix(matrix)
-# text += '\n' + print_words(yes_words)
-# text += '\n</body></html>'
-# f = open("sõnamäng.html", "w")
-# f.write(text)
-# f.close()
 
-to_canvas(matrix, yes_words, canvas)
+    to_canvas(matrix, yes_words, canvas)
+    canvas.showPage()
+
+
+canvas = Canvas('booklet_' + str(WORDLENGTH) + '.pdf', pagesize=A4)
+for i in range(BOOKLET_PAGES):
+    print('creating page', i + 1)
+    canvas.setFont("Times-Roman", 12)
+    canvas.drawString(PDF_LEFT, 0.5 * cm, 'Micheleki sõnamäng, 2021   ' + str(i+1) + '/' + str(BOOKLET_PAGES))
+    create_page(canvas)
 
 canvas.save()
-
-
