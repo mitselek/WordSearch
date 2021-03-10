@@ -27,7 +27,7 @@ def new_words():
     for word in sample(list(open('et/' + str(WORDLENGTH) + '.txt')), WORDCOUNT):
         words += word
     words = [(word, word) for word in words.rstrip("\n").split('\n')]
-    extra_words = [('SASKIA', 'rebane'), ('MIHKEL', 'siplgs')] # ((word1, hint1), (word2, hint2), ...)
+    extra_words = [('word1', 'hint'), ('word2', 'hint')] # ((word1, hint1), (word2, hint2), ...)
     for word in extra_words:
         words.insert(0, word)
 
